@@ -1,12 +1,35 @@
-# treadmillData
+# BluetoothTreadmill
 
-The objective of this project was to reverse engineer the serial communication from the treadmill user interface to the treadmill motor control board to see if I can extract the current speed and incline data. I have a Livestrong LS8.0T, which is manufactored by Johnson Fitness. I was initially intending to use a magnet or rotary encoder to collect the speed, but upon disassembly, I discovered a MAX3085 that appeared to connect the controls to the motor control board. After a little investigating, I found the serial communication between the controls and the motor controller to be easy to decode.
+The objective of this project was to reverse engineer the serial communication from the treadmill user interface to the treadmill motor control board to see if I can extract the current speed and incline data. Then, send that information to Zwift using BLE FTMS so I can accurately track my treadmill workouts. I have a Livestrong LS8.0T, which is manufactored by Johnson Fitness. I was initially intending to use a magnet or rotary encoder to collect the speed, but upon disassembly, I discovered a MAX3085 that appeared to connect the controls to the motor control board. After a little investigating, I found the serial communication between the controls and the motor controller to be easy to decode.
 
-I wrote this program for an ESP32, since it has three serial ports and I had one laying around. The Serial2 Rx pin of the ESP32 is connected directly to the low side of the MAX3085 Tx IC inside the control panel and I also connected the ground pins to improve the reliability of the data.
+I wrote this program for an ESP32 in Arduino, since it has three serial ports and I had one laying around. The Serial2 Rx pin of the ESP32 is connected directly to the low side of the MAX3085 Tx IC inside the control panel and I also connected the ground pins to improve the reliability of the data.
 
+# TODO
+The code desperately needs to be cleaned up, but that's for another day.
+
+# Bluetooth FTMS
+I was able to find several helpful sources in getting this working. Obviously, the Bluetooth FTMS Specifications were instrumental.
+* https://www.bluetooth.com/specifications/specs/fitness-machine-service-1-0/
+
+This project is not written in Arduino, but I referred to it quite a bit.
+* https://github.com/lefty01/ESP32_TTGO_FTMS
+
+There is also a discussion in the Zwift commmunity that was helpful:
+* https://forums.zwift.com/t/show-us-your-zwift-setup/59647/27
+
+# Serial Commands from Treadmill
 I found what appears to be four types of commands being transmitted to the motor controller, speed, incine, stop, and one that I'm assuming is simply a keep-alive heartbeat. The basic idea seems to be that all commands begin with `0 255`. Byte3 will determine the type of command, speed is 241, incline is 246. It's possible that byte4 carries some meaning as well, but I didn't investigate any further. 
 
-There is no terminating character on each command, so I needed to look for the pattern of `0 255` to detect the start of a command. Then I used byte3 to determine how many more bytes to expect and grabbed that many more bytes from the serial buffer. In the case of the speed and incline commands, they are both a total of 7 bits. Here is what I found for my treadmill:
+There is no terminating character on each command, so I needed to look for the pattern of `0 255` to detect the start of a command. Then I used byte3 to determine how many more bytes to expect and grabbed that many more bytes from the serial buffer. In the case of the speed and incline commands, they are both a total of 7 bits. 
+
+EDIT: After more observations, I think I've come to find the meaning of byte4. It seems to be an indicator of how many more bytes to expect. I don't think I'll rework my functions, but I'll leave this here for future reference.
+```
+byte4 = 255 | No more bytes
+      = 0   | 1 more byte
+      = 1   | 2 more bytes
+      = 2   | 3 more bytes
+```
+Here is what I found for my treadmill:
 
 # Speed Table
 | byte1 | byte2 | byte3 | byte4 | byte5 | byte6 | byte7 | Observed Speed When Sent (mph) |
