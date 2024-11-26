@@ -1,7 +1,9 @@
 #include <ArduinoBLE.h>
+#include <HardwareSerial.h>
 #include "BLEService.h"
 #include "SpeedMapping.h"
 #include "InclineMapping.h"
+
 
 bool debug = false; //Set this to true if currently running it without a serial connection to the treadmill
 
@@ -13,7 +15,7 @@ const byte CMD_GET_INCLINE = 246;
 const byte CMD_HEARTBEAT = 249;
 const byte CMD_GET_STOP = 245;
 
-float currentSpeed[4];
+byte currentSpeed[4] = {0};
 float currentMPH;
 float prevMPH = 13;
 float currentIncline[4];
@@ -21,6 +23,12 @@ float currentPercent;
 float prevPercent = 13;
 int   currentStop[3];
 unsigned long lastSendTime = 0;
+unsigned long speedMillisInterval=0;
+unsigned long currentSpeedMillis=0;
+unsigned long prevSpeedMillis=0;
+unsigned long lastSpeedUpdateTime = 0;
+float deltaSpeed = 0;
+float totalDistance = 0;
 
 float kmph;
 float mphtokmph = 1.609344;
@@ -36,8 +44,8 @@ const int INCLINE_TABLE_SIZE = 25;
 const int INCLINE_CMD_ID = 2;
 
 void setup() {
-  Serial2.begin(9600);
-  Serial.begin(9600);
+  Serial2.begin(9600, SERIAL_8N1, 16, 17); // Treadmill Connection
+  Serial.begin(9600);  // USB Port for Debugging
   pinMode(LED_BUILTIN,OUTPUT);
 
   if (!BLE.begin()) {
@@ -66,35 +74,47 @@ void loop() {
   sendBLE();
 
   while(debug == true) {
-    Serial.print("DEBUG ");
     getSpeed();
   }
   
-  if(Serial2.available() > 0) {
-    char data1 = Serial2.read();
+  if(Serial2.available() > 2) {
+    byte data1 = Serial2.read();
     if(data1 != 0) {
-      continue;
+      return;
     }
-    char data2 = Serial2.read();
+    // Serial.println("zero detected!");
+
+    byte data2 = Serial2.read();
     if(data2 != 255) {
-      continue;
+      return;
     }
-    char data3 = Serial2.read();
+    // Serial.println("255 detected!");
+    byte data3 = Serial2.read();
+    // Serial.print(data3, DEC);
     switch (data3) {
       case CMD_GET_SPEED: {
+        // Serial.print("{speed command received} ");
         getSpeed();
+        // Serial.println();
+        updateDistance();
+        // Serial2.flush();
         break;
       }
       case CMD_GET_INCLINE: {
-        getIncline();
+        // getIncline();
         break;
       }
       case CMD_HEARTBEAT: {
-        // Serial.println("Heartbeat Detected"); 
+        Serial.print(millis());
+        Serial.println(" Heartbeat Detected"); 
         break;
       }
       case CMD_GET_STOP: {
         getStop();
+        break;
+      }
+      case 255: {
+        printUnknownCommand(data3);
         break;
       }
       default: {
@@ -105,12 +125,41 @@ void loop() {
   }
 }
 
-void printUnknownCommand(char cmd) {
+void updateDistance() {
+  unsigned long currentTime = millis();
+  float deltaTime = (currentTime - lastSpeedUpdateTime) / 1000; // Use Seconds
+  // Serial.print("deltaTime = ");
+  // Serial.println(deltaTime);
+  if (deltaTime >= 15) { // If 10+ seconds have passed
+    // float deltaSpeed = currentMPH * mphtokmph;
+    float deltaDistance = currentMPH * deltaTime / 3600; // deltaDistance (miles) = deltaSpeed (mph) * deltaTime (seconds) / 3600;
+    // Serial.print("currentMPH= ");
+    // Serial.print(currentMPH);
+    // Serial.print(", ");
+    // Serial.print("deltaTime= ");
+    // Serial.print(deltaTime);
+    // Serial.print(", ");
+    // Serial.print("deltaDistance= ");
+    // Serial.print(deltaDistance, 10);
+    // totalDistance += deltaDistance;
+    // Serial.print(", ");
+    // Serial.println(totalDistance);
+    lastSpeedUpdateTime = currentTime;
+
+    // Serial.println(getTotalDistance());
+  }
+}
+
+float getTotalDistance() {
+  return totalDistance;
+}
+
+void printUnknownCommand(byte cmd) {
   Serial.print("Unknown Command detected: ");
   Serial.print("data3 = ");
   Serial.println(cmd, DEC);
   Serial.print("{Command Received} ");
-  int unknownCommand[4];
+  byte unknownCommand[4];
   for (int i = 0; i < 3; i++) {
     unknownCommand[i] = Serial2.read();
   }
@@ -123,42 +172,80 @@ void printUnknownCommand(char cmd) {
   Serial.println();
 }
 
-void readSpeedCommand() {
-  for(int i = 0; i < SPEED_CMD_SIZE; i++) {
-    currentSpeed[i] = Serial2.read();
-  }
-}
-
 void getSpeed() {
-  if (debug) {
-    Serial.print("DEBUG ");
-    currentSpeed[0] = 2;
-    currentSpeed[1] = 10;
-    currentSpeed[2] = 170;
-    currentSpeed[3] = 20;
-  } else {
-    readSpeedCommand();
-  }
+    currentSpeedMillis = millis();
+    // Serial.print(currentSpeedMillis);
+    // Serial.print(" - ");
+    // Serial.print(prevSpeedMillis);
+    speedMillisInterval = currentSpeedMillis - prevSpeedMillis;
+    // Serial.print(" = ");
+    // Serial.println(speedMillisInterval);
+  if (speedMillisInterval >= 1000) { // Only update the current speed once per second
+      prevSpeedMillis = currentSpeedMillis;
+    if (debug != true) {
+      for (int i = 0; i < 4; i++) {
+        while (!Serial2.available() >= 1) {} // Wait for data
+        currentSpeed[i] = Serial2.read();
+        // Serial.println(currentSpeed[i], DEC);
+      }
+      // Serial.print(" Get next four bytes");
+      // for(int i=0; i < 4; i++) {
+      //   if (Serial2.available() > 0) {
+      //     currentSpeed[i] = Serial2.read();
+      //     Serial.println(currentSpeed[i], DEC);
+      //   }
+      // }
+    } else {
+          // Serial.print("DEBUG ");
+          currentSpeed[0] = 2;
+          currentSpeed[1] = 10;
+          currentSpeed[2] = 170;
+          currentSpeed[3] = 20;
+    }
+    // Serial.println(currentSpeed[0]);
+    // Serial.print(" Check if it is a valid speed command: ");
+    // Serial.print(currentSpeed[0]);
+    // Serial.print(" Command: ");
+    // if(currentSpeed[0] != 2) {
+    //   Serial.println();
+    //   return;}
+    // Serial.println("passed");
 
-  if(currentSpeed[0] != SPEED_CMD_ID) {
-    return;
-  }
+    // Print the received serial command, useful for debugging
+    // Serial.print(millis());
+    // Serial.print("  ");
+    // 
+    // Serial.print("0, 255, 241");
+    // for (int i=0; i < 4; i++) {
+    //   Serial.print(", ");
+    //   Serial.print((int)currentSpeed[i]);
+    // }
+    // // Serial.print(", ");
+    // Serial.println();
+    // Serial.print(" = ");
 
-  //Match up the received serial command to the speedTable to find the speed in MPH
-  for (int i = 0; i < SPEED_TABLE_SIZE; i++) {
-    if(currentSpeed[0] == speedTable[i][0] &&
-       currentSpeed[1] == speedTable[i][1] &&
-       currentSpeed[2] == speedTable[i][2] &&
-       currentSpeed[3] == speedTable[i][3]) {
+    //Match up the received serial command to the speedTable to find the speed in MPH
+    for (int i=0; i < 117; i++) {
+    if(
+      currentSpeed[0] == speedTable[i][0] &&
+      currentSpeed[1] == speedTable[i][1] &&
+      currentSpeed[2] == speedTable[i][2] &&
+      currentSpeed[3] == speedTable[i][3]
+    ) {
       //Print the current speed in MPH
       currentMPH = speedTable[i][4];
-      if (currentMPH != prevMPH) {
-        Serial.print(currentMPH, 1);
-        Serial.println(" MPH");
-        prevMPH = currentMPH;
+      // Serial.print(currentMPH, 1);
+      // Serial.println("mph ");
+      // if (currentMPH != prevMPH) {
+
+      //     Serial.print(currentMPH, 1);
+      //     Serial.println(" MPH");
+      //     prevMPH = currentMPH;
+      //   }
       }
     }
   }
+  Serial2.flush();
 }
 
 void readInclineCommand() {
@@ -243,12 +330,13 @@ void sendBLE() {
   byte byteArray[6] = {
     4, 0, // Flags for the FTMS protocol
     static_cast<byte>(inst_speed), static_cast<byte>(inst_speed >> 8), // Speed
-    static_cast<byte>(incl_percent), static_cast<byte>(incl_percent >> 8) // Incline
+    // 34, 12,
+    // static_cast<byte>(incl_percent), static_cast<byte>(incl_percent >> 8) // Incline
+    0, 0
   };
 
   // Send the data
   RSCMeasurementChar.writeValue(byteArray, sizeof(byteArray));
-  RSCMeasurementChar.notify(); // Manually trigger the notification
 
   // Turn off the built-in LED
   digitalWrite(LED_BUILTIN, LOW);
