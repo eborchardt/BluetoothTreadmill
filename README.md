@@ -4,14 +4,23 @@ The objective of this project was to reverse engineer the serial communication f
 
 I wrote this program for an ESP32 in Arduino, since it has three serial ports and I had one laying around. The Serial2 Rx pin of the ESP32 is connected directly to the low side of the MAX3085 Tx IC inside the control panel and I also connected the ground pins to improve the reliability of the data.
 
+## Updates
+I have created a better BLE library for this project. It is available here: https://github.com/eborchardt/bleFTMS.
+The new library makes it super easy to send the following data points over BLE:
+  * Speed (km/h)
+  * Distance (km)
+  * Incline (%)
+  * Elevation gain (m)
+  * Cadence (rpm)
+
 # TODO
-The code desperately needs to be cleaned up, but that's for another day.
+Add running cadence detection, probably with either a piezo sensor or microphone. 
 
 # Bluetooth FTMS
 I was able to find several helpful sources in getting this working. Obviously, the Bluetooth FTMS Specifications were instrumental.
 * https://www.bluetooth.com/specifications/specs/fitness-machine-service-1-0/
 
-This project is not written in Arduino, but I referred to it quite a bit.
+This project is not written in Arduino, but I referred to it quite a bit. I also based the bleFTMS library on this project.
 * https://github.com/lefty01/ESP32_TTGO_FTMS
 
 There is also a discussion in the Zwift commmunity that was helpful:
