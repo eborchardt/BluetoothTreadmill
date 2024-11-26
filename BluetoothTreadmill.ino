@@ -60,6 +60,7 @@ const int INCLINE_TABLE_SIZE = 25;
 const int INCLINE_CMD_ID = 2;
 
 bool previousLEDState = LOW;
+bool previousBleClientConnected = true;
 
 void setup() {
   Serial2.begin(9600, SERIAL_8N1, 16, 17); // Treadmill Connection
@@ -68,10 +69,10 @@ void setup() {
   
 
   initBLE("Livestrong LS8.0T Development");
-
 }
 
 void loop() {
+  loopHandleBLE();
   if (bleClientConnected != previousLEDState) {
     previousLEDState = bleClientConnected;
     digitalWrite(LED_BUILTIN, bleClientConnected ? HIGH : LOW);
@@ -115,8 +116,8 @@ void loop() {
         break;
       }
       case CMD_HEARTBEAT: {
-        Serial.print(millis());
-        Serial.println(" Heartbeat Detected?"); 
+        // Serial.print(millis());
+        // Serial.println(" Heartbeat Detected?"); 
         break;
       }
       case CMD_GET_STOP: {
@@ -203,7 +204,7 @@ void getSpeed() {
       }
     }
   }
-  Serial2.flush(); // I'm not positive this makes any difference
+  // Serial2.flush(); // I'm not positive this makes any difference
 }
 
 void readInclineCommand() {
@@ -235,11 +236,11 @@ void getIncline() {
        currentIncline[3] == inclineTable[i][3]) {
       //Print the current incline in percent
       currentPercent = inclineTable[i][4];
-      if (currentPercent != prevPercent) {
-        Serial.print(currentPercent, 1);
-        Serial.println(" %");
-        prevPercent = currentPercent;
-      }
+      // if (currentPercent != prevPercent) {
+      //   Serial.print(currentPercent, 1);
+      //   Serial.println(" %");
+      //   prevPercent = currentPercent;
+      // }
     }
   }
 }
@@ -268,19 +269,24 @@ void getStop() {
 }
 
 void sendBLE() {
-  if (!bleClientConnected) {
+  if (!bleClientConnected && previousBleClientConnected) {
+    previousBleClientConnected = bleClientConnected;
     Serial.println("Not connected to BLE Client");
-    return;}
-
+    return;
+    }
+    else if (!bleClientConnected) {
+      return;
+    }
+  previousBleClientConnected = bleClientConnected;
   // Turn off the built-in LED
   digitalWrite(LED_BUILTIN, LOW);
 
   // Prepare the data for BLE
-  float kmph = currentMPH * mphtokmph;
-  currentSettings.kmph = static_cast<uint16_t>(kmph * 100); // Instantaneous speed in units of .01 km/h
-  currentSettings.incline = static_cast<uint16_t>(currentPercent * 10); // Incline in units of .1 percent
-  currentSettings.elevationGain = 0;
-  currentSettings.totalDistance = 0;
+  float currentKmph = (currentMPH * mphtokmph);
+  currentSettings.kmph = currentKmph; // Instantaneous speed in units of .01 km/h
+  currentSettings.incline = currentPercent; // Incline in units of .1 percent
+  currentSettings.elevationGain = 0.0;
+  currentSettings.totalDistance = 0.0;
   currentSettings.cadence = 0;
 
   // Send data over BLE
